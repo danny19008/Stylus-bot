@@ -40,7 +40,7 @@ def keep_alive():
 
 # ---------------- CONFIG ----------------
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID", "-5119090631"))  # environment variable for second group
+ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID", "-5119090631"))
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN environment variable not set")
@@ -75,24 +75,17 @@ def save_group_id(group_id):
 
 # ---------------- PERSISTENT MENUS ----------------
 async def set_persistent_menus(application):
-
-    private_commands = [
-        BotCommand("dummy", "Menu-driven bot, commands not used by users")
-    ]
-
+    private_commands = [BotCommand("dummy", "Menu-driven bot, commands not used by users")]
     group_commands = [
         BotCommand("start", "Redirect to private chat for feedback"),
         BotCommand("help", "Redirect to private chat for instructions")
     ]
-
     await application.bot.set_my_commands(private_commands)
     await application.bot.set_my_commands(group_commands, scope=None)
 
 # ---------------- START COMMAND ----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     chat_type = update.effective_chat.type
-
     if chat_type in ["group", "supergroup"]:
         await update.message.reply_text(
             "⚡ Please continue in private to submit feedback:\n"
@@ -108,84 +101,53 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
-    keyboard = [
-        ["Send Feedback", "Help"],
-        ["Cancel"]
-    ]
-
-    reply_markup = ReplyKeyboardMarkup(
-        keyboard,
-        resize_keyboard=True,
-        persistent=True
-    )
+    keyboard = [["Send Feedback", "Help"], ["Cancel"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, persistent=True)
 
     await update.message.reply_text(
         "👋 Welcome to StyluS Feedback Bot!\n\n"
         "Use the menu below to start submitting feedback.",
         reply_markup=reply_markup
     )
-
     return QUESTION_FEEDBACK
 
 # ---------------- MENU BUTTON HANDLER ----------------
 async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     text = update.message.text
-
     if text == "Send Feedback":
-        await update.message.reply_text(
-            "📩 Please send your feedback (text, image, voice, video, document)."
-        )
+        await update.message.reply_text("📩 Please send your feedback (text, image, voice, video, document).")
         return QUESTION_FEEDBACK
-
     elif text == "Help":
         await update.message.reply_text(
             "ℹ️ To submit feedback, click 'Send Feedback', send your message, "
             "then confirm sending before it reaches the group."
         )
         return QUESTION_FEEDBACK
-
     elif text == "Cancel":
         return await cancel(update, context)
-
     else:
         return await guide_to_menu(update, context)
 
 # ---------------- GUIDE USERS BACK TO MENU ----------------
 async def guide_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     await update.message.reply_text(
         "⚠️ Please use the buttons below to start submitting feedback.",
-        reply_markup=ReplyKeyboardMarkup(
-            [["Send Feedback", "Help"], ["Cancel"]],
-            resize_keyboard=True,
-            persistent=True
-        )
+        reply_markup=ReplyKeyboardMarkup([["Send Feedback", "Help"], ["Cancel"]], resize_keyboard=True, persistent=True)
     )
-
     return QUESTION_FEEDBACK
 
 # ---------------- CANCEL SESSION ----------------
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     context.user_data.clear()
-
-    await update.message.reply_text(
-        "❌ Feedback session canceled. You can start again anytime."
-    )
-
+    await update.message.reply_text("❌ Feedback session canceled. You can start again anytime.")
     return ConversationHandler.END
 
 # ---------------- HANDLE FEEDBACK ----------------
 async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     user = update.effective_user
     msg = update.message
-
     if not CURRENT_GROUP_ID:
-        await update.message.reply_text(
-            "⚠️ Oops! I haven't been added to a feedback group yet."
-        )
+        await update.message.reply_text("⚠️ Oops! I haven't been added to a feedback group yet.")
         return ConversationHandler.END
 
     context.user_data["feedback"] = {
@@ -196,8 +158,7 @@ async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
 
-    preview_text = ""
-
+    preview_text = "[Media Preview]"
     if msg.text:
         preview_text = msg.text
     elif msg.photo:
@@ -210,14 +171,9 @@ async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         preview_text = "🎵 [Audio]"
     elif msg.document:
         preview_text = f"📄 {msg.document.file_name}"
-    else:
-        preview_text = "[Media Preview]"
 
-    keyboard = [[
-        InlineKeyboardButton("✅ Yes, Send", callback_data='confirm_send'),
-        InlineKeyboardButton("❌ Cancel", callback_data='confirm_cancel')
-    ]]
-
+    keyboard = [[InlineKeyboardButton("✅ Yes, Send", callback_data='confirm_send'),
+                 InlineKeyboardButton("❌ Cancel", callback_data='confirm_cancel')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
@@ -225,160 +181,93 @@ async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
         reply_markup=reply_markup
     )
-
     return CONFIRM_FEEDBACK
 
 # ---------------- CONFIRMATION CALLBACK ----------------
 async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     query = update.callback_query
     await query.answer()
-
     if query.data == "confirm_cancel":
         context.user_data.clear()
         await query.edit_message_text("❌ Feedback session canceled.")
         return ConversationHandler.END
 
-    keyboard = [[
-        InlineKeyboardButton("🐞 Bug", callback_data='cat_bug'),
-        InlineKeyboardButton("😕 Confusion", callback_data='cat_conf'),
-        InlineKeyboardButton("💡 Idea", callback_data='cat_idea')
-    ]]
-
+    keyboard = [[InlineKeyboardButton("🐞 Bug", callback_data='cat_bug'),
+                 InlineKeyboardButton("😕 Confusion", callback_data='cat_conf'),
+                 InlineKeyboardButton("💡 Idea", callback_data='cat_idea')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await query.edit_message_text(
-        "Thanks! How should we label this feedback?",
-        reply_markup=reply_markup
-    )
-
+    await query.edit_message_text("Thanks! How should we label this feedback?", reply_markup=reply_markup)
     return QUESTION_CATEGORY
 
 # ---------------- CATEGORY CALLBACK ----------------
 async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     global CURRENT_GROUP_ID
-
     query = update.callback_query
     await query.answer()
-
     if not CURRENT_GROUP_ID:
         await query.edit_message_text("⚠️ Bot is not in any group.")
         return ConversationHandler.END
 
     feedback_data = context.user_data.get("feedback")
-
     if not feedback_data:
         await query.edit_message_text("⏱ Session timed out.")
         return ConversationHandler.END
 
-    category_map = {
-        'cat_bug': '🐞 BUG REPORT',
-        'cat_conf': '😕 CONFUSION/UX',
-        'cat_idea': '💡 FEATURE IDEA'
-    }
-
+    category_map = {'cat_bug': '🐞 BUG REPORT', 'cat_conf': '😕 CONFUSION/UX', 'cat_idea': '💡 FEATURE IDEA'}
     category = category_map.get(query.data, 'General Feedback')
 
-    def escape_md(text):
-        return re.sub(r'([_*[\]()~`>#+-=|{}.!])', r'\\\1', text)
-
+    def escape_md(text): return re.sub(r'([_*[\]()~`>#+-=|{}.!])', r'\\\1', text)
     sender_name_safe = escape_md(feedback_data['sender_name'])
     username_safe = escape_md(feedback_data['username'])
 
-    header = (
-        f"📩 *NEW FEEDBACK* - {category}\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"👤 *From:* {sender_name_safe} ({username_safe})\n"
-        f"📅 *Time:* {feedback_data['timestamp']}\n"
-        f"━━━━━━━━━━━━━━━"
-    )
-
+    header = (f"📩 *NEW FEEDBACK* - {category}\n"
+              f"━━━━━━━━━━━━━━━\n"
+              f"👤 *From:* {sender_name_safe} ({username_safe})\n"
+              f"📅 *Time:* {feedback_data['timestamp']}\n"
+              f"━━━━━━━━━━━━━━━")
     try:
-
-        await context.bot.send_message(
-            chat_id=CURRENT_GROUP_ID,
-            text=header,
-            parse_mode='Markdown'
-        )
-
-        await context.bot.forward_message(
-            chat_id=CURRENT_GROUP_ID,
-            from_chat_id=feedback_data['chat_id'],
-            message_id=feedback_data['message_id']
-        )
-
-        await query.edit_message_text(
-            "✅ Feedback successfully delivered to your group."
-        )
-
+        await context.bot.send_message(chat_id=CURRENT_GROUP_ID, text=header, parse_mode='Markdown')
+        await context.bot.forward_message(chat_id=CURRENT_GROUP_ID,
+                                          from_chat_id=feedback_data['chat_id'],
+                                          message_id=feedback_data['message_id'])
+        await query.edit_message_text("✅ Feedback successfully delivered to your group.")
     except Exception as e:
-
         logger.error(f"Error forwarding feedback: {e}")
-
-        await query.edit_message_text(
-            "❌ Failed to deliver. Make sure I am admin."
-        )
-
+        await query.edit_message_text("❌ Failed to deliver. Make sure I am admin.")
     finally:
         context.user_data.clear()
-
     return ConversationHandler.END
 
 # ---------------- BOT ADDED HANDLER ----------------
 async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     global CURRENT_GROUP_ID
-
     chat = update.effective_chat
     new_status = update.my_chat_member.new_chat_member.status
-
     if new_status in ["member", "administrator"]:
-
         if not CURRENT_GROUP_ID:
-
             CURRENT_GROUP_ID = chat.id
             save_group_id(chat.id)
-
-            await context.bot.send_message(
-                chat.id,
-                "👋 Thanks for adding me! I will now forward all feedback here."
-            )
-
+            await context.bot.send_message(chat.id, "👋 Thanks for adding me! I will now forward all feedback here.")
         else:
+            await context.bot.send_message(chat.id, "⚠️ I am already active in another group.")
 
-            await context.bot.send_message(
-                chat.id,
-                "⚠️ I am already active in another group."
-            )
-
-# ---------------- FEEDBACK REMINDER TASK ----------------
+# ---------------- BACKGROUND TASKS ----------------
 async def feedback_reminder_task(application):
-
     while True:
-
         if CURRENT_GROUP_ID:
-
             try:
-
                 await application.bot.send_message(
                     chat_id=CURRENT_GROUP_ID,
                     text="💡 Reminder: Submit feedback anytime via private chat."
                 )
-
             except Exception as e:
                 logger.error(f"Reminder error: {e}")
+        await asyncio.sleep(2 * 24 * 60 * 60)  # 2 days
 
-        await asyncio.sleep(2 * 24 * 60 * 60)
-
-# ---------------- SILENT SELF-PING TASK ----------------
 async def self_ping_task(application):
-    """
-    Silent ping to keep bot alive + optional notification to admin group.
-    """
     while True:
         try:
-            await application.bot.get_me()  # silent ping
+            await application.bot.get_me()
             if ADMIN_GROUP_ID:
                 await application.bot.send_message(
                     chat_id=ADMIN_GROUP_ID,
@@ -386,42 +275,42 @@ async def self_ping_task(application):
                 )
         except Exception as e:
             logger.error(f"Self-ping error: {e}")
-        await asyncio.sleep(10 * 60)  # every 10 minutes
+        await asyncio.sleep(10 * 60)
 
 # ---------------- MAIN ----------------
 async def main():
-
     keep_alive()
     load_group_id()
-
     application = ApplicationBuilder().token(BOT_TOKEN).build()
-
     await set_persistent_menus(application)
 
-    # Start background tasks
-    application.create_task(feedback_reminder_task(application))
-    application.create_task(self_ping_task(application))
-
+    # Add handlers
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_buttons)],
         states={
-            QUESTION_FEEDBACK: [
-                MessageHandler(filters.ALL & ~filters.COMMAND, get_feedback),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, guide_to_menu)
-            ],
+            QUESTION_FEEDBACK: [MessageHandler(filters.ALL & ~filters.COMMAND, get_feedback),
+                                MessageHandler(filters.TEXT & ~filters.COMMAND, guide_to_menu)],
             CONFIRM_FEEDBACK: [CallbackQueryHandler(confirm_callback)],
             QUESTION_CATEGORY: [CallbackQueryHandler(category_callback)]
         },
         fallbacks=[],
         allow_reentry=True
     )
-
     application.add_handler(conv_handler)
     application.add_handler(ChatMemberHandler(bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
     application.add_handler(MessageHandler(filters.COMMAND, start))
 
-    print("StyluS Feedback Bot is polling...")
-    await application.run_polling()
+    # Start background tasks after bot is running
+    async def start_tasks(app):
+        asyncio.create_task(feedback_reminder_task(app))
+        asyncio.create_task(self_ping_task(app))
 
+    # Run polling (PTB handles the loop internally)
+    await application.run_polling(close_loop=False, startup=start_tasks)
+
+# ---------------- ENTRY POINT ----------------
 if __name__ == '__main__':
-    asyncio.run(main())
+    # Use existing event loop on Render, do NOT call asyncio.run()
+    loop = asyncio.get_event_loop()
+    loop.create_task(main())
+    loop.run_forever()
