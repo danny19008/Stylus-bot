@@ -40,6 +40,8 @@ def keep_alive():
 
 # ---------------- CONFIG ----------------
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID", "-5119090631"))  # environment variable for second group
+
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN environment variable not set")
 
@@ -55,8 +57,6 @@ QUESTION_FEEDBACK, CONFIRM_FEEDBACK, QUESTION_CATEGORY = range(3)
 
 # ---------------- SINGLE GROUP TRACKING ----------------
 CURRENT_GROUP_ID = None
-
-# ---------------- GROUP PERSISTENCE ----------------
 GROUP_FILE = "group_id.txt"
 
 def load_group_id():
@@ -371,18 +371,36 @@ async def feedback_reminder_task(application):
 
         await asyncio.sleep(2 * 24 * 60 * 60)
 
+# ---------------- SILENT SELF-PING TASK ----------------
+async def self_ping_task(application):
+    """
+    Silent ping to keep bot alive + optional notification to admin group.
+    """
+    while True:
+        try:
+            await application.bot.get_me()  # silent ping
+            if ADMIN_GROUP_ID:
+                await application.bot.send_message(
+                    chat_id=ADMIN_GROUP_ID,
+                    text="💡 Bot is alive (silent ping)."
+                )
+        except Exception as e:
+            logger.error(f"Self-ping error: {e}")
+        await asyncio.sleep(10 * 60)  # every 10 minutes
+
 # ---------------- MAIN ----------------
 async def main():
 
     keep_alive()
-
     load_group_id()
 
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     await set_persistent_menus(application)
 
+    # Start background tasks
     application.create_task(feedback_reminder_task(application))
+    application.create_task(self_ping_task(application))
 
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_buttons)],
@@ -399,17 +417,10 @@ async def main():
     )
 
     application.add_handler(conv_handler)
-
-    application.add_handler(
-        ChatMemberHandler(bot_added, ChatMemberHandler.MY_CHAT_MEMBER)
-    )
-
-    application.add_handler(
-        MessageHandler(filters.COMMAND, start)
-    )
+    application.add_handler(ChatMemberHandler(bot_added, ChatMemberHandler.MY_CHAT_MEMBER))
+    application.add_handler(MessageHandler(filters.COMMAND, start))
 
     print("StyluS Feedback Bot is polling...")
-
     await application.run_polling()
 
 if __name__ == '__main__':
