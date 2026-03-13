@@ -1,7 +1,6 @@
 import os
 import logging
 import re
-import asyncio
 from datetime import datetime
 from threading import Thread
 from flask import Flask
@@ -62,25 +61,21 @@ def escape_md(text):
 
 # ---------------- PERSISTENT MENUS ----------------
 async def set_menus(application):
-    # Commands for Private DM (The "App" view)
     await application.bot.set_my_commands(
         [BotCommand("start", "🚀 Start Feedback Session"), BotCommand("help", "❓ How to use")],
         scope=BotCommandScopeAllPrivateChats()
     )
-    # Commands for Groups (The "Top Menu" bar)
     await application.bot.set_my_commands(
         [BotCommand("start", "📩 Send Feedback Privately")],
         scope=BotCommandScopeAllGroupChats()
     )
 
-# ---------------- START COMMAND (WITH DEEP LINKING) ----------------
+# ---------------- START COMMAND ----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     bot_me = await context.bot.get_me()
 
-    # 1. LOGIC FOR GROUPS (The Redirector)
     if chat.type != "private":
-        # Create deep link: t.me/botname?start=start_fb
         deep_link_url = f"https://t.me/{bot_me.username}?start=start_fb"
         keyboard = [[InlineKeyboardButton("🚀 Click to Send Feedback", url=deep_link_url)]]
         await update.message.reply_text(
@@ -90,40 +85,36 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
-    # 2. LOGIC FOR PRIVATE (Auto-Start Detection)
-    # Check if user came from the group link
     if context.args and context.args[0] == "start_fb":
         await update.message.reply_text(
-            "🚀 *Direct Feedback Mode*\nPlease send your message (text, photo, or voice note):",
+            r"🚀 *Direct Feedback Mode*" + "\n" + r"Please send your message (text, photo, or voice note):",
             parse_mode="MarkdownV2"
         )
         return QUESTION_FEEDBACK
 
-    # 3. LOGIC FOR PRIVATE (Standard Welcome)
     keyboard = [["Send Feedback", "Help"], ["Cancel"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, persistent=True)
     await update.message.reply_text(
-        "👋 Welcome to StyluS Feedback Bot\!\n\nUse the menu below to start\.",
+        r"👋 Welcome to StyluS Feedback Bot\!" + "\n\n" + r"Use the menu below to start\.",
         reply_markup=reply_markup,
         parse_mode="MarkdownV2"
     )
     return QUESTION_FEEDBACK
 
-# ---------------- MENU BUTTON HANDLER ----------------
+# ---------------- HANDLERS ----------------
 async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if text == "Send Feedback":
         await update.message.reply_text("📩 Please send your feedback (text, photo, voice, etc.).")
         return QUESTION_FEEDBACK
     elif text == "Help":
-        await update.message.reply_text("ℹ️ Send your feedback, preview it, and pick a category to finish.")
+        await update.message.reply_text("ℹ️ Send feedback, preview it, and pick a category.")
         return QUESTION_FEEDBACK
     elif text == "Cancel":
         await update.message.reply_text("❌ Session canceled.")
         return ConversationHandler.END
     return QUESTION_FEEDBACK
 
-# ---------------- HANDLE FEEDBACK ----------------
 async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     msg = update.message
@@ -141,8 +132,7 @@ async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
 
     preview_text = "Media Content"
-    if msg.text: 
-        preview_text = msg.text[:50] + "..." if len(msg.text) > 50 else msg.text
+    if msg.text: preview_text = msg.text[:50]
     elif msg.photo: preview_text = "📷 Photo"
     elif msg.voice: preview_text = "🎤 Voice Message"
 
@@ -161,7 +151,6 @@ async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     if query.data == "confirm_cancel":
         await query.edit_message_text("❌ Canceled.")
         return ConversationHandler.END
@@ -194,26 +183,23 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.forward_message(chat_id=target_id, from_chat_id=data['chat_id'], message_id=data['message_id'])
         await query.edit_message_text("✅ Feedback delivered!")
     except Exception as e:
-        logger.error(f"Forward error: {e}")
         await query.edit_message_text("❌ Delivery failed. Ensure Bot is Admin in the group.")
     
     return ConversationHandler.END
 
-# ---------------- AUTO-DETECT LOGIC ----------------
+# ---------------- BACKGROUND LOGIC ----------------
 async def bot_added(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     if update.my_chat_member.new_chat_member.status in ["member", "administrator"]:
         if chat.id == ADMIN_GROUP_ID: return
-
         alert_text = (
-            "🚨 *NEW FEEDBACK GROUP DETECTED*\n\n"
-            f"Name: `{escape_md(chat.title)}`\n"
-            f"ID: `{chat.id}`\n\n"
-            "👉 Copy this ID to Render Environment Variables as `GROUP_ID`\."
+            r"🚨 *NEW FEEDBACK GROUP DETECTED*" + "\n\n" +
+            f"Name: `{escape_md(chat.title)}`" + "\n" +
+            f"ID: `{chat.id}`" + "\n\n" +
+            r"👉 Copy this ID to Render Environment Variables as `GROUP_ID`\."
         )
         await context.bot.send_message(chat_id=ADMIN_GROUP_ID, text=alert_text, parse_mode="MarkdownV2")
 
-# ---------------- BACKGROUND JOBS ----------------
 async def self_ping(context: ContextTypes.DEFAULT_TYPE):
     try: await context.bot.send_message(chat_id=ADMIN_GROUP_ID, text="🟢 Bot Heartbeat")
     except: pass
@@ -225,12 +211,9 @@ async def feedback_tip(context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- MAIN ----------------
 def main():
-    # Keep Alive Thread for Render
     Thread(target=run_flask, daemon=True).start()
-
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Apply Persistent Menus for Groups and DMs
     if application.job_queue:
         application.job_queue.run_once(lambda c: set_menus(application), when=0)
         application.job_queue.run_repeating(self_ping, interval=600, first=10)
