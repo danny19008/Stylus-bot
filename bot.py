@@ -19,7 +19,7 @@ from telegram.ext import (
 # ---------------- CONFIG & LOGGING ----------------
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID", "-5119090631"))
-FEEDBACK_GROUP_ID = os.getenv("GROUP_ID")  # first group that sends feedback locks
+FEEDBACK_GROUP_ID = os.getenv("GROUP_ID")
 SELF_URL = os.getenv("SELF_URL")
 RENDER_URL = os.getenv("RENDER_URL")
 
@@ -148,16 +148,15 @@ async def private_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if start_args and start_args[0].lower() == "feedback":
         await update.message.reply_text("📩 Send your feedback message (text/photo/video)")
         return 1
+    # show keyboard menu always
+    await show_private_menu(update)
+
+async def show_private_menu(update: Update):
     keyboard = [["Send Feedback", "Help"], ["Cancel"]]
     await update.message.reply_text(
         "Choose an option:",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard,
-            resize_keyboard=True,
-            one_time_keyboard=False
-        )
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
     )
-    return 0
 
 # ---------------- MENU HANDLER ----------------
 async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -171,6 +170,8 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "Cancel":
         await update.message.reply_text("❌ Session ended")
         return ConversationHandler.END
+    # If user sends anything else, just show the menu again
+    await show_private_menu(update)
     return 0
 
 # ---------------- FEEDBACK WITH COOLDOWN ----------------
@@ -179,7 +180,7 @@ async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
     if user_id not in user_feedback_history:
         user_feedback_history[user_id] = []
-    user_feedback_history[user_id] = [t for t in user_feedback_history[user_id] if now - t < timedelta(minutes=10)]
+    user_feedback_history[user_id] = [t for t in user_feedback_history[user_id] if now - t < COOLDOWN]
     if len(user_feedback_history[user_id]) >= MAX_FEEDBACK:
         await update.message.reply_text(
             "⚠️ You have reached your feedback limit. Please wait 10 minutes before sending more feedback."
