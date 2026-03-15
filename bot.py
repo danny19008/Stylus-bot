@@ -273,7 +273,9 @@ def main():
     async def runner():
         asyncio.create_task(start_bot())
         from werkzeug.serving import run_simple
-        port = int(os.environ.get("PORT", 10000))
+        # ⚠️ FUTURE-PROOF PORT HANDLING
+        port_str = os.environ.get("PORT") or "10000"
+        port = int(port_str)
         run_simple("0.0.0.0", port, app, use_reloader=False, threaded=True)
     asyncio.run(runner())
 
