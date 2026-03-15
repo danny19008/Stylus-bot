@@ -78,14 +78,12 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE):
         bot_me = await context.bot.get_me()
         feedback_url = f"https://t.me/{bot_me.username}?start=feedback"
         kb = [[InlineKeyboardButton("💬 Send Feedback", url=feedback_url)]]
-
         await context.bot.send_message(
             chat_id=int(FEEDBACK_GROUP_ID),
             text="💡 *Reminder:* Submit feedback via private chat!",
             parse_mode="MarkdownV2",
             reply_markup=InlineKeyboardMarkup(kb)
         )
-
     except Exception as e:
         logger.error(f"Reminder error: {e}")
 
@@ -108,18 +106,12 @@ async def post_init(application):
         [BotCommand("start", "📩 Start Feedback")],
         scope=BotCommandScopeAllPrivateChats()
     )
-
-    await application.bot.set_chat_menu_button(
-        menu_button=MenuButtonCommands()
-    )
-
+    await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
     job_queue = application.job_queue
     job_queue.run_repeating(send_heartbeat, interval=3600, first=10)
     job_queue.run_repeating(send_reminder, interval=259200, first=10)
-
     if SELF_URL:
         asyncio.create_task(self_ping())
-
     if RENDER_URL:
         webhook_url = f"{RENDER_URL}/{BOT_TOKEN}"
         await application.bot.set_webhook(webhook_url)
@@ -135,7 +127,7 @@ async def show_group_feedback_keyboard(update: Update, context: ContextTypes.DEF
     if update.message:
         await update.message.reply_text(
             "⚡ Tap 'Feedback' to start private feedback.",
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
         )
 
 async def handle_group_feedback_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -159,7 +151,11 @@ async def private_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [["Send Feedback", "Help"], ["Cancel"]]
     await update.message.reply_text(
         "Choose an option:",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, persistent=True)
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard,
+            resize_keyboard=True,
+            one_time_keyboard=False
+        )
     )
     return 0
 
@@ -198,7 +194,8 @@ async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "user": f"@{user.username}" if user.username else "N/A",
         "time": now.strftime("%Y-%m-%d %H:%M")
     }
-    kb = [[InlineKeyboardButton("✅ Yes", callback_data="c_yes"), InlineKeyboardButton("❌ No", callback_data="c_no")]]
+    kb = [[InlineKeyboardButton("✅ Yes", callback_data="c_yes"),
+           InlineKeyboardButton("❌ No", callback_data="c_no")]]
     await msg.reply_text("📩 Ready to send this feedback?", reply_markup=InlineKeyboardMarkup(kb))
     return 2
 
@@ -248,7 +245,6 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_bot():
     await application.initialize()
     await post_init(application)
-
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", private_menu)],
         states={
@@ -260,7 +256,6 @@ async def start_bot():
         fallbacks=[CommandHandler("cancel", lambda u, c: ConversationHandler.END)],
         allow_reentry=True
     )
-
     application.add_handler(conv)
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, show_group_feedback_keyboard))
     application.add_handler(CommandHandler("feedback", show_group_feedback_keyboard))
@@ -273,7 +268,6 @@ def main():
     async def runner():
         asyncio.create_task(start_bot())
         from werkzeug.serving import run_simple
-        # ⚠️ FUTURE-PROOF PORT HANDLING
         port_str = os.environ.get("PORT") or "10000"
         port = int(port_str)
         run_simple("0.0.0.0", port, app, use_reloader=False, threaded=True)
