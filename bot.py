@@ -1,7 +1,7 @@
 import os
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from threading import Thread
 from flask import Flask, request
 import asyncio
@@ -56,6 +56,12 @@ def lock_feedback_group(group_id: int):
         FEEDBACK_GROUP_ID = str(group_id)
         logger.info(f"FEEDBACK_GROUP_ID locked to: {FEEDBACK_GROUP_ID}")
     return FEEDBACK_GROUP_ID
+
+# ---------------- FEEDBACK COOLDOWN ----------------
+# key = user_id, value = list of datetime of sent feedbacks
+user_feedback_history = {}
+MAX_FEEDBACK = 2
+COOLDOWN = timedelta(minutes=10)
 
 # ---------------- BACKGROUND JOBS ----------------
 async def send_heartbeat(context: ContextTypes.DEFAULT_TYPE):
@@ -197,7 +203,28 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return 0
 
+# ---------------- FEEDBACK WITH COOLDOWN ----------------
 async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    now = datetime.now()
+
+    # Initialize user history if not exists
+    if user_id not in user_feedback_history:
+        user_feedback_history[user_id] = []
+
+    # Remove timestamps older than COOLDOWN
+    user_feedback_history[user_id] = [
+        t for t in user_feedback_history[user_id] if now - t < COOLDOWN
+    ]
+
+    # Check if user has reached limit
+    if len(user_feedback_history[user_id]) >= MAX_FEEDBACK:
+        await update.message.reply_text(
+            "⚠️ You have reached your feedback limit. Please wait 10 minutes before sending more feedback."
+        )
+        return ConversationHandler.END  # Stop further processing
+
+    # --- Existing code ---
     msg = update.message
     user = update.effective_user
 
@@ -206,7 +233,7 @@ async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "cid": msg.chat_id,
         "name": user.full_name,
         "user": f"@{user.username}" if user.username else "N/A",
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M")
+        "time": now.strftime("%Y-%m-%d %H:%M")
     }
 
     kb = [[
@@ -218,6 +245,7 @@ async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📩 Ready to send this feedback?",
         reply_markup=InlineKeyboardMarkup(kb)
     )
+
     return 2
 
 # ---------------- CONFIRMATION ----------------
@@ -283,6 +311,13 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✅ *Feedback Delivered\\!*",
             parse_mode="MarkdownV2"
         )
+
+        # Record timestamp for cooldown
+        user_id = update.effective_user.id
+        now = datetime.now()
+        if user_id not in user_feedback_history:
+            user_feedback_history[user_id] = []
+        user_feedback_history[user_id].append(now)
 
     except Exception as e:
         logger.error(f"Send Error: {e}")
