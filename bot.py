@@ -19,7 +19,7 @@ from telegram.ext import (
 # ---------------- CONFIG & LOGGING ----------------
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID", "-5119090631"))
-FEEDBACK_GROUP_ID = os.getenv("GROUP_ID")
+FEEDBACK_GROUP_ID = os.getenv("GROUP_ID")  # first group that sends feedback locks
 SELF_URL = os.getenv("SELF_URL")
 RENDER_URL = os.getenv("RENDER_URL")
 
@@ -40,7 +40,7 @@ def home():
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    application.update_queue.put_nowait(update)
+    asyncio.create_task(application.update_queue.put(update))  # ensure updates are processed
     return "ok"
 
 # ---------------- UTILS ----------------
@@ -179,7 +179,7 @@ async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
     if user_id not in user_feedback_history:
         user_feedback_history[user_id] = []
-    user_feedback_history[user_id] = [t for t in user_feedback_history[user_id] if now - t < COOLDOWN]
+    user_feedback_history[user_id] = [t for t in user_feedback_history[user_id] if now - t < timedelta(minutes=10)]
     if len(user_feedback_history[user_id]) >= MAX_FEEDBACK:
         await update.message.reply_text(
             "⚠️ You have reached your feedback limit. Please wait 10 minutes before sending more feedback."
@@ -232,10 +232,7 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=int(FEEDBACK_GROUP_ID), text=header, parse_mode="MarkdownV2")
         await context.bot.copy_message(chat_id=int(FEEDBACK_GROUP_ID), from_chat_id=data["cid"], message_id=data["mid"])
         await query.edit_message_text("✅ *Feedback Delivered\\!*", parse_mode="MarkdownV2")
-        user_id = update.effective_user.id
-        if user_id not in user_feedback_history:
-            user_feedback_history[user_id] = []
-        user_feedback_history[user_id].append(datetime.now())
+        user_feedback_history.setdefault(update.effective_user.id, []).append(datetime.now())
     except Exception as e:
         logger.error(f"Send Error: {e}")
         await query.edit_message_text("❌ Delivery failed. Ensure bot is admin.")
@@ -245,33 +242,43 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_bot():
     await application.initialize()
     await post_init(application)
+
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", private_menu)],
         states={
             0: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu)],
-            1: [MessageHandler(filters.ALL & ~filters.COMMAND, get_feedback)],
+            1: [MessageHandler(filters.ALL_TYPES & ~filters.COMMAND, get_feedback)],
             2: [CallbackQueryHandler(confirm_callback, pattern="^c_")],
             3: [CallbackQueryHandler(category_callback, pattern="^cat_")]
         },
         fallbacks=[CommandHandler("cancel", lambda u, c: ConversationHandler.END)],
         allow_reentry=True
     )
+
+    # Handlers
     application.add_handler(conv)
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, show_group_feedback_keyboard))
     application.add_handler(CommandHandler("feedback", show_group_feedback_keyboard))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_feedback_button))
-    await application.start()
-    logger.info("Bot started successfully")
+
+    # start processing webhook updates
+    async def process_updates():
+        while True:
+            update = await application.update_queue.get()
+            await application.process_update(update)
+
+    asyncio.create_task(process_updates())
+    logger.info("Bot initialized successfully")
 
 # ---------------- ENTRY POINT ----------------
 def main():
     async def runner():
-        asyncio.create_task(start_bot())
+        await start_bot()
         from werkzeug.serving import run_simple
-        # ⚠️ FUTURE-PROOF PORT HANDLING
         port_str = os.environ.get("PORT") or "10000"
         port = int(port_str)
         run_simple("0.0.0.0", port, app, use_reloader=False, threaded=True)
+
     asyncio.run(runner())
 
 if __name__ == "__main__":
