@@ -25,6 +25,9 @@ RENDER_URL = os.getenv("RENDER_URL")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# ---------------- APPLICATION ----------------
+application = ApplicationBuilder().token(BOT_TOKEN).build()
+
 # ---------------- UTILS ----------------
 def escape_md(text):
     reserved_chars = r'_*[]()~`>#+-=|{}.!'
@@ -82,13 +85,13 @@ async def self_ping():
         await asyncio.sleep(600)
 
 # ---------------- INITIAL SETUP ----------------
-async def post_init(application):
-    await application.bot.set_my_commands(
+async def post_init(app):
+    await app.bot.set_my_commands(
         [BotCommand("start", "📩 Start Feedback")],
         scope=BotCommandScopeAllPrivateChats()
     )
-    await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-    job_queue = application.job_queue
+    await app.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    job_queue = app.job_queue
     job_queue.run_repeating(send_heartbeat, interval=3600, first=10)
     job_queue.run_repeating(send_reminder, interval=259200, first=10)
     if SELF_URL:
@@ -243,15 +246,13 @@ async def start_bot():
 
     # ---------------- RUN ----------------
     if RENDER_URL:
-        # Webhook mode
         webhook_url = f"{RENDER_URL}/{BOT_TOKEN}"
         await application.bot.set_webhook(webhook_url)
         logger.info(f"Webhook set: {webhook_url}")
         await application.start()
-        await application.updater.start_polling()  # Needed to process queue
+        await application.updater.start_polling()  # Ensure queue is processed
         await application.updater.idle()
     else:
-        # Local polling for testing
         logger.info("Starting local polling...")
         await application.run_polling()
 
