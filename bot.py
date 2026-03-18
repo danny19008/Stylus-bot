@@ -111,10 +111,6 @@ async def post_init(application):
     job_queue.run_repeating(send_reminder, interval=259200, first=10)
     if SELF_URL:
         asyncio.create_task(self_ping())
-    if RENDER_URL:
-        webhook_url = f"{RENDER_URL}/{BOT_TOKEN}"
-        await application.bot.set_webhook(webhook_url)
-        logger.info(f"Webhook set to {webhook_url}")
 
 # ---------------- GROUP FEEDBACK ----------------
 async def show_group_feedback_keyboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -258,24 +254,23 @@ async def start_bot():
     application.add_handler(CommandHandler("feedback", show_group_feedback_keyboard))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_feedback_button))
 
-    async def process_updates():
-        while True:
-            update = await application.update_queue.get()
-            await application.process_update(update)
+    logger.info("Bot handlers added")
 
-    asyncio.create_task(process_updates())
-    logger.info("Bot initialized successfully")
+    # ---------------- PROCESS UPDATES ----------------
+    if RENDER_URL:
+        webhook_url = f"{RENDER_URL}/{BOT_TOKEN}"
+        await application.bot.set_webhook(webhook_url)
+        logger.info(f"Webhook set: {webhook_url}")
+    else:
+        # Local polling for testing
+        logger.info("Starting polling...")
+        await application.start()
+        await application.updater.start_polling()
+        await application.updater.idle()
 
 # ---------------- ENTRY POINT ----------------
 def main():
-    async def runner():
-        await start_bot()
-        from werkzeug.serving import run_simple
-        port_str = os.environ.get("PORT") or "10000"
-        port = int(port_str)
-        run_simple("0.0.0.0", port, app, use_reloader=False, threaded=True)
-
-    asyncio.run(runner())
+    asyncio.run(start_bot())
 
 if __name__ == "__main__":
     main()
