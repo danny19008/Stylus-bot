@@ -26,7 +26,7 @@ RENDER_URL = os.getenv("RENDER_URL")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ---------------- FLASK SERVER ----------------
+# ---------------- FLASK ----------------
 app = Flask(__name__)
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -40,7 +40,7 @@ def home():
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    asyncio.create_task(application.update_queue.put(update))  # ensure updates are processed
+    asyncio.create_task(application.update_queue.put(update))
     return "ok"
 
 # ---------------- UTILS ----------------
@@ -60,7 +60,7 @@ user_feedback_history = {}
 MAX_FEEDBACK = 2
 COOLDOWN = timedelta(minutes=10)
 
-# ---------------- BACKGROUND JOBS ----------------
+# ---------------- BACKGROUND ----------------
 async def send_heartbeat(context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_message(
@@ -93,9 +93,8 @@ async def self_ping():
     while True:
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(SELF_URL) as resp:
-                    if resp.status == 200:
-                        logger.info("Self ping success")
+                async with session.get(SELF_URL):
+                    logger.info("Self ping success")
         except Exception as e:
             logger.error(f"Self ping failed: {e}")
         await asyncio.sleep(600)
@@ -123,24 +122,24 @@ async def show_group_feedback_keyboard(update: Update, context: ContextTypes.DEF
     locked_group_id = lock_feedback_group(group_id)
     if int(locked_group_id) != group_id:
         return
-    keyboard = [["Feedback"]]
+    keyboard = [["💬 Feedback"]]
     if update.message:
         await update.message.reply_text(
-            "⚡ Tap 'Feedback' to start private feedback.",
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+            "⚡ Tap '💬 Feedback' to start private feedback.",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
         )
 
 async def handle_group_feedback_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = update.effective_chat.id
     if not FEEDBACK_GROUP_ID or int(FEEDBACK_GROUP_ID) != group_id:
         return
-    if update.message.text == "Feedback":
+    if update.message.text == "💬 Feedback":
         bot_me = await context.bot.get_me()
         await update.message.reply_text(
             f"🚀 Start private feedback:\nhttps://t.me/{bot_me.username}?start=feedback"
         )
 
-# ---------------- PRIVATE CHAT MENU ----------------
+# ---------------- PRIVATE MENU ----------------
 async def private_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         return
@@ -148,11 +147,10 @@ async def private_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if start_args and start_args[0].lower() == "feedback":
         await update.message.reply_text("📩 Send your feedback message (text/photo/video)")
         return 1
-    # show keyboard menu always
     await show_private_menu(update)
 
 async def show_private_menu(update: Update):
-    keyboard = [["Send Feedback", "Help"], ["Cancel"]]
+    keyboard = [["📩 Send Feedback", "❓ Help"], ["❌ Cancel"]]
     await update.message.reply_text(
         "Choose an option:",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
@@ -161,20 +159,19 @@ async def show_private_menu(update: Update):
 # ---------------- MENU HANDLER ----------------
 async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    if text == "Send Feedback":
+    if text == "📩 Send Feedback":
         await update.message.reply_text("📩 Send your feedback message (text/photo/video)")
         return 1
-    elif text == "Help":
+    elif text == "❓ Help":
         await update.message.reply_text("Send feedback → confirm → select category")
         return 0
-    elif text == "Cancel":
+    elif text == "❌ Cancel":
         await update.message.reply_text("❌ Session ended")
         return ConversationHandler.END
-    # If user sends anything else, just show the menu again
     await show_private_menu(update)
     return 0
 
-# ---------------- FEEDBACK WITH COOLDOWN ----------------
+# ---------------- FEEDBACK ----------------
 async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     now = datetime.now()
@@ -195,21 +192,21 @@ async def get_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "user": f"@{user.username}" if user.username else "N/A",
         "time": now.strftime("%Y-%m-%d %H:%M")
     }
-    kb = [[InlineKeyboardButton("✅ Yes", callback_data="c_yes"),
-           InlineKeyboardButton("❌ No", callback_data="c_no")]]
+    kb = [[InlineKeyboardButton("✅ Yes, send", callback_data="c_yes")],
+          [InlineKeyboardButton("❌ No, cancel", callback_data="c_no")]]
     await msg.reply_text("📩 Ready to send this feedback?", reply_markup=InlineKeyboardMarkup(kb))
     return 2
 
-# ---------------- CONFIRMATION ----------------
+# ---------------- CONFIRM ----------------
 async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if query.data == "c_no":
         await query.edit_message_text("❌ Canceled")
         return ConversationHandler.END
-    kb = [[InlineKeyboardButton("🐞 Bug", callback_data="cat_bug"),
-           InlineKeyboardButton("😕 Confusion", callback_data="cat_conf"),
-           InlineKeyboardButton("💡 Idea", callback_data="cat_idea")]]
+    kb = [[InlineKeyboardButton("🐞 Bug", callback_data="cat_bug")],
+          [InlineKeyboardButton("😕 Confusion", callback_data="cat_conf")],
+          [InlineKeyboardButton("💡 Idea", callback_data="cat_idea")]]
     await query.edit_message_text("🏷 Label your feedback:", reply_markup=InlineKeyboardMarkup(kb))
     return 3
 
@@ -232,7 +229,7 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_message(chat_id=int(FEEDBACK_GROUP_ID), text=header, parse_mode="MarkdownV2")
         await context.bot.copy_message(chat_id=int(FEEDBACK_GROUP_ID), from_chat_id=data["cid"], message_id=data["mid"])
-        await query.edit_message_text("✅ *Feedback Delivered\\!*", parse_mode="MarkdownV2")
+        await query.edit_message_text("✅ *Feedback Delivered!* 🎉", parse_mode="MarkdownV2")
         user_feedback_history.setdefault(update.effective_user.id, []).append(datetime.now())
     except Exception as e:
         logger.error(f"Send Error: {e}")
@@ -248,7 +245,7 @@ async def start_bot():
         entry_points=[CommandHandler("start", private_menu)],
         states={
             0: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu)],
-            1: [MessageHandler(filters.ALL_TYPES & ~filters.COMMAND, get_feedback)],
+            1: [MessageHandler(~filters.COMMAND, get_feedback)],
             2: [CallbackQueryHandler(confirm_callback, pattern="^c_")],
             3: [CallbackQueryHandler(category_callback, pattern="^cat_")]
         },
@@ -256,13 +253,11 @@ async def start_bot():
         allow_reentry=True
     )
 
-    # Handlers
     application.add_handler(conv)
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, show_group_feedback_keyboard))
     application.add_handler(CommandHandler("feedback", show_group_feedback_keyboard))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_group_feedback_button))
 
-    # start processing webhook updates
     async def process_updates():
         while True:
             update = await application.update_queue.get()
