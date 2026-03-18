@@ -4,7 +4,6 @@ import re
 from datetime import datetime, timedelta
 import asyncio
 import aiohttp
-from flask import Flask, request
 
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
@@ -25,23 +24,6 @@ RENDER_URL = os.getenv("RENDER_URL")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-# ---------------- FLASK ----------------
-app = Flask(__name__)
-application = ApplicationBuilder().token(BOT_TOKEN).build()
-
-@app.route("/")
-def home():
-    return {
-        "status": "online",
-        "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }, 200
-
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    asyncio.create_task(application.update_queue.put(update))
-    return "ok"
 
 # ---------------- UTILS ----------------
 def escape_md(text):
@@ -234,9 +216,11 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- START BOT ----------------
 async def start_bot():
+    # Initialize the application
     await application.initialize()
     await post_init(application)
 
+    # Conversation Handler
     conv = ConversationHandler(
         entry_points=[CommandHandler("start", private_menu)],
         states={
@@ -249,6 +233,7 @@ async def start_bot():
         allow_reentry=True
     )
 
+    # Add handlers
     application.add_handler(conv)
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, show_group_feedback_keyboard))
     application.add_handler(CommandHandler("feedback", show_group_feedback_keyboard))
@@ -256,17 +241,19 @@ async def start_bot():
 
     logger.info("Bot handlers added")
 
-    # ---------------- PROCESS UPDATES ----------------
+    # ---------------- RUN ----------------
     if RENDER_URL:
+        # Webhook mode
         webhook_url = f"{RENDER_URL}/{BOT_TOKEN}"
         await application.bot.set_webhook(webhook_url)
         logger.info(f"Webhook set: {webhook_url}")
+        await application.start()
+        await application.updater.start_polling()  # Needed to process queue
+        await application.updater.idle()
     else:
         # Local polling for testing
-        logger.info("Starting polling...")
-        await application.start()
-        await application.updater.start_polling()
-        await application.updater.idle()
+        logger.info("Starting local polling...")
+        await application.run_polling()
 
 # ---------------- ENTRY POINT ----------------
 def main():
